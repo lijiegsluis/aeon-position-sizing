@@ -260,6 +260,12 @@ def run_fixed_risk(inputs: dict = None, silent: bool = False) -> dict:
     risk_dollars    = capital * risk_pct
     risk_per_share  = abs(entry - stop)
     shares          = math.floor(risk_dollars / risk_per_share) if risk_per_share > 0 else 0
+    # Without leverage the position can't exceed capital; a very tight stop would otherwise ask for it
+    capped_to_capital = shares * entry > capital
+    if capped_to_capital:
+        shares = math.floor(capital / entry)
+        risk_dollars = shares * risk_per_share
+        risk_pct = risk_dollars / capital
     position_value  = shares * entry
     alloc_pct       = position_value / capital if capital > 0 else 0.0
 
@@ -307,6 +313,10 @@ def run_fixed_risk(inputs: dict = None, silent: bool = False) -> dict:
         print(f"                   = {shares:,} × {fmt_dollar(entry)}")
         print(f"                   = {fmt_dollar(position_value)}")
         print(f"  Allocation       = {fmt_pct(alloc_pct)} of capital")
+        if capped_to_capital:
+            print()
+            print(f"  !! Stop is so tight that 1R sizing exceeds your capital; capped at")
+            print(f"     100% of capital (no leverage). Actual risk is {fmt_pct(risk_pct)}.")
 
         section("R-Multiple Analysis")
         print(f"  R-Multiple       = (Target − Entry) / (Entry − Stop)")
@@ -370,7 +380,7 @@ def run_conviction(inputs: dict = None, silent: bool = False) -> dict:
         modifier_label = "Fixed 2% (Kelly ignored)"
     else:
         applied_kelly = raw_kelly * modifier
-        final_alloc   = min(applied_kelly, cap)
+        final_alloc   = max(0.0, min(applied_kelly, cap))
         modifier_label = f"× {modifier} (Kelly modifier)"
 
     dollar_amount = final_alloc * capital
